@@ -6,6 +6,7 @@ Not only does it have a name that just rolls off the tongue, it can be used to q
 
 ## Features
 
+- 🌟 **Super Amazing Tool Name**: Crafted with attention to detail to make your network scanning awesome!
 - 🚀 **Multithreaded Scanning**: Scans multiple targets concurrently for maximum efficiency.
 - ⚡ **Quick Results**: Stops scanning a host as soon as an open port is detected.
 - 📡 **Real-Time Feedback**: Uses Nmap’s `-v` (verbose) mode to process results in real time.
