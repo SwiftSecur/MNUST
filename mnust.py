@@ -2,6 +2,7 @@ import argparse
 import subprocess
 import concurrent.futures
 import os
+import ipaddress
 import pyfiglet
 
 ascii_art = pyfiglet.figlet_format("MNUST")
@@ -11,7 +12,7 @@ print('Multithreaded Nmap Up Scan Thing')
 def parse_args():
     parser = argparse.ArgumentParser(description="Multithreaded Nmap Up Scan Thing.")
     parser.add_argument(
-        "-i", "--input", required=True, help="Path to the target list file (one target per line)"
+        "-i", "--input", required=True, help="Path to the target list file (one target per line or CIDR range)"
     )
     parser.add_argument(
         "-o", "--output", default="live_hosts.txt", help="Output file for live hosts (default: live_hosts.txt)"
@@ -21,12 +22,25 @@ def parse_args():
     )
     return parser.parse_args()
 
-def nmap_scan(target):
-    """
-    Scan some shizz, using -v here to monitor output, we only really need 1 port to confirm the hosts alive. 
-    """
-    try:
+def parse_targets(file_path):
+    targets = []
+    with open(file_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                # Check if the line is a CIDR range
+                network = ipaddress.ip_network(line, strict=False)
+                targets.extend([str(ip) for ip in network.hosts()])
+            except ValueError:
+                # Otherwise, treat it as a plain IP or domain
+                targets.append(line)
+    return targets
 
+def nmap_scan(target):
+    try:
+        # Command for TCP and UDP scan
         command = [
             "nmap",
             "-sS",  # Stealth TCP scan
@@ -45,16 +59,14 @@ def nmap_scan(target):
 
         for line in iter(process.stdout.readline, ""):
             line = line.strip()
-            print(f"[DEBUG] {line}") 
+            print(f"[DEBUG] {line}")
 
-            # Check for open ports n shizz in the live output
             if "open" in line.lower():
                 print(f"[LIVE] {target} (Open port found: {line})")
-                process.kill()  # Stop when we find one of the lil beauties
+                process.kill()  
                 return target
 
-        process.wait()
-
+        process.wait() 
         print(f"[DEAD] {target} (No open ports)")
         return None
 
@@ -64,19 +76,18 @@ def nmap_scan(target):
 
 def main():
     args = parse_args()
-
     if not os.path.isfile(args.input):
         print(f"Error: Target file '{args.input}' not found.")
         return
 
-    with open(args.input, "r") as f:
-        targets = [line.strip() for line in f if line.strip()]
+    targets = parse_targets(args.input)
 
     total_targets = len(targets)
     print(f"Starting scans for {total_targets} targets with {args.threads} threads...")
 
     live_hosts = []
 
+    # Multithreading shizzle
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.threads) as executor:
         future_to_target = {executor.submit(nmap_scan, target): target for target in targets}
 
@@ -89,8 +100,10 @@ def main():
             except Exception as e:
                 print(f"Error scanning {target}: {e}")
 
+            # Progress output
             print(f"Progress: {i}/{total_targets} ({(i/total_targets)*100:.2f}%)")
 
+    # Output all the things
     with open(args.output, "w") as f:
         for host in live_hosts:
             f.write(f"{host}\n")
@@ -99,4 +112,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
