@@ -38,20 +38,20 @@ def parse_targets(file_path):
                 targets.append(line)
     return targets
 
-def nmap_scan(target):
+def nmap_scan(target, output_file):
     try:
-        # Command for TCP and UDP scan
+        
         command = [
             "nmap",
-            "-sS",  # Stealth TCP scan
-            "-sU",  # UDP scan
-            "--top-ports", "1000",  # Top 1000 common ports
-            "--open",  # Only show open ports
-            "-n",  # Disable DNS resolution
-            "-Pn",  # Skip host discovery
-            "-v",  # Verbose mode for incremental output
-            "--max-retries", "3",  # Increase retries to 3
-            "--host-timeout", "30s",  # Timeout per target
+            "-sS",  
+            "-sU",  
+            "--top-ports", "1000", 
+            "--open",  
+            "-n", 
+            "-Pn",  
+            "-T5", 
+            "--max-retries", "0",  
+            "--host-timeout", "5s",  
             target
         ]
 
@@ -59,14 +59,17 @@ def nmap_scan(target):
 
         for line in iter(process.stdout.readline, ""):
             line = line.strip()
-            print(f"[DEBUG] {line}")
+            print(f"[DEBUG] {line}")  
 
             if "open" in line.lower():
                 print(f"[LIVE] {target} (Open port found: {line})")
-                process.kill()  
+                with open(output_file, "a") as f:  # Append to the output file
+                    f.write(f"{target}\n")
+                process.kill()  # Stop the Nmap process as soon as an open port is found
                 return target
 
-        process.wait() 
+        process.wait()  
+
         print(f"[DEAD] {target} (No open ports)")
         return None
 
@@ -76,6 +79,7 @@ def nmap_scan(target):
 
 def main():
     args = parse_args()
+
     if not os.path.isfile(args.input):
         print(f"Error: Target file '{args.input}' not found.")
         return
@@ -85,28 +89,21 @@ def main():
     total_targets = len(targets)
     print(f"Starting scans for {total_targets} targets with {args.threads} threads...")
 
-    live_hosts = []
+    with open(args.output, "w") as f:
+        f.write("")  # Clear the file contents
 
     # Multithreading shizzle
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.threads) as executor:
-        future_to_target = {executor.submit(nmap_scan, target): target for target in targets}
+        future_to_target = {executor.submit(nmap_scan, target, args.output): target for target in targets}
 
         for i, future in enumerate(concurrent.futures.as_completed(future_to_target), 1):
             target = future_to_target[future]
             try:
-                result = future.result()
-                if result:
-                    live_hosts.append(result)
+                future.result()
             except Exception as e:
                 print(f"Error scanning {target}: {e}")
 
-            # Progress output
             print(f"Progress: {i}/{total_targets} ({(i/total_targets)*100:.2f}%)")
-
-    # Output all the things
-    with open(args.output, "w") as f:
-        for host in live_hosts:
-            f.write(f"{host}\n")
 
     print(f"Scan complete. Live hosts saved to '{args.output}'.")
 
